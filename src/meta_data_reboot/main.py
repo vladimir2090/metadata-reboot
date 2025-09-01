@@ -8,6 +8,7 @@ import os
 import re
 import json
 import atexit
+import subprocess
 
 class MusicProcessor:
     __slots__ = ('llm', 'music_folder', 'music_recode_folder', 'tags', 'system_prompt', 'rename_format', 'chunk_size', "stopwords", "remove_images")
@@ -32,7 +33,7 @@ class MusicProcessor:
                 n_threads=os.cpu_count() or 4
             )
             atexit.register(self._cleanup_llm)
-            print("Model loaded")
+            print("[MSG] Model loaded")
         except Exception as e:
             print(f"[ERROR] Model load failed: {e}")
             self.llm = None
@@ -83,7 +84,7 @@ class MusicProcessor:
             result = self.llm(
                 f"[INST]\n{prompt}\n[/INST]",
                 max_tokens=1024,         
-                temperature=0.6,
+                temperature=0.8,
                 top_p=0.9,
                 top_k=50,
                 min_p=0.05,
@@ -98,7 +99,7 @@ class MusicProcessor:
             if isinstance(result, dict) and 'choices' in result:
                 ai_text = result['choices'][0]['text'].strip()
                 raw = result['choices'][0]['text']
-                print("FULL RESULT:", result)
+                print("[MSG] FULL RESULT:", result)
                 with open("debug_ai_response.txt", "w", encoding="utf-8") as f:
                     f.write(raw)
                 return self.parse_ai_response(ai_text)
@@ -117,6 +118,37 @@ class MusicProcessor:
                 except:
                     pass
             return None
+        
+    def remove_album_art_with_ffmpeg(self, folder_path):
+        files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp3")]
+        removed_count = 0
+
+        for filename in files:
+            file_path = os.path.join(folder_path, filename)
+            temp_file = os.path.join(folder_path, f"_tmp_{filename}")
+
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y",
+                    "-i", file_path,              # используем конкретный mp3 файл
+                    "-map_metadata", "0",
+                    "-id3v2_version", "3",
+                    "-c:a", "copy",
+                    "-vn",
+                    temp_file
+                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                os.replace(temp_file, file_path)
+                print(f"[MSG] Cover removed: {filename}")
+                removed_count += 1
+
+            except subprocess.CalledProcessError as e:
+                print(f"[ERROR] Processing error {filename}: {e.stderr.decode(errors='ignore')}")
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+
+        print(f"\n[MSG] Total files processed: {len(files)}")
+        print(f"[MSG] Covers removed: {removed_count}")
 
     def apply_changes(self, file_path, new_name, new_metadata):
         try:
@@ -144,7 +176,8 @@ class MusicProcessor:
             if temp_path != final_path:
                 os.rename(temp_path, final_path)
 
-            print(f"[OK] {Path(file_path).name} -> {final_path.name}")
+
+            print(f"[MSG] {Path(file_path).name} -> {final_path.name}")
             return True
         except Exception as e:
             print(f"[ERROR] Failed to apply changes for {file_path}: {e}")
@@ -153,7 +186,7 @@ class MusicProcessor:
     def run(self):
         mp3_files = list(Path(self.music_folder).glob("*.mp3"))
         if not mp3_files:
-            print("No MP3 files found.")
+            print("[MSG] No MP3 files found.")
             return
 
         metadata_list = []
@@ -166,7 +199,7 @@ class MusicProcessor:
         for i in range(0, len(metadata_list), self.chunk_size):
             batch = metadata_list[i:i + self.chunk_size]
             ai_output = self.process_batch(batch)
-            print(ai_output)
+            print("[MSG]", ai_output)
             if not ai_output:
                 continue
 
@@ -181,7 +214,7 @@ class MusicProcessor:
                         safe_metadata[field] = metadata.get(field, "Unknown")
                     
                     new_file_name = self.rename_format.format(**safe_metadata)
-                    print(new_file_name)
+                    print("[MSG]", new_file_name)
                 except (KeyError, ValueError) as e:
                     print(f"[WARNING] Filename format error: {e}, using original name")
                     new_file_name = old_data["filename"]
@@ -189,7 +222,7 @@ class MusicProcessor:
                 if self.apply_changes(old_file, new_file_name, new_data["metadata"]):
                     processed_count += 1
 
-        print(f"Processed: {processed_count}/{len(mp3_files)}")
+        print(f"[MSG] Processed: {processed_count}/{len(mp3_files)}")
 
 def main():
     MusicProcessor().run()
