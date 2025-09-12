@@ -1,21 +1,20 @@
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3
 from llama_cpp import Llama
 from pathlib import Path
 import shutil
-import os
+import multiprocessing
 import re
-import json
+import yaml
 import atexit
 import subprocess
 
 class MusicProcessor:
     __slots__ = ('llm', 'music_folder', 'music_recode_folder', 'tags', 'system_prompt', 'rename_format', 'chunk_size', "stopwords", "remove_images")
 
-    def __init__(self, config_path: str = "config.json"):
+    def __init__(self, config_path: str = "config.yaml"):
         with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
+            config = yaml.load(f, Loader=yaml.SafeLoader)
 
         self.music_folder = config["music_folder"]
         self.music_recode_folder = config["music_recode_folder"]
@@ -30,7 +29,7 @@ class MusicProcessor:
             self.llm = Llama(
                 model_path=config["model_path"],
                 n_ctx=4096,
-                n_threads=os.cpu_count() or 4
+                n_threads=multiprocessing.cpu_count() or 4
             )
             atexit.register(self._cleanup_llm)
             print("[MSG] Model loaded")
@@ -38,7 +37,7 @@ class MusicProcessor:
             print(f"[ERROR] Model load failed: {e}")
             self.llm = None
 
-        os.makedirs(self.music_recode_folder, exist_ok=True)
+        Path(self.music_recode_folder).mkdir(parents=True, exist_ok=True)
 
     def _cleanup_llm(self):
         if hasattr(self, 'llm') and self.llm is not None:
@@ -66,7 +65,7 @@ class MusicProcessor:
             }
 
             cleaned_metadata = {k: self.clean_stopwords(v) for k, v in metadata.items()}
-            filename = os.path.basename(file_path)
+            filename = Path(file_path).name
             cleaned_filename = self.clean_stopwords(filename)
             
             return {"filename": filename, "cleaned_filename": cleaned_filename, "metadata": cleaned_metadata}
@@ -78,8 +77,8 @@ class MusicProcessor:
         if not self.llm or not batch:
             return None
 
-        files_data_json = json.dumps(batch, ensure_ascii=False, indent=2)
-        prompt = f"{self.system_prompt}\n\n{files_data_json}"
+        files_data_yaml = yaml.dump(batch, allow_unicode=False, indent=2)
+        prompt = f"{self.system_prompt}\n\n{files_data_yaml}"
         try:
             result = self.llm(
                 f"[INST]\n{prompt}\n[/INST]",
@@ -109,43 +108,43 @@ class MusicProcessor:
 
     def parse_ai_response(self, ai_text: str):
         try:
-            return json.loads(ai_text)
-        except:
+            return yaml.safe_load(ai_text)
+        except yaml.YAMLError:
             match = re.search(r'\[.*\]', ai_text, re.DOTALL)
             if match:
                 try:
-                    return json.loads(match.group())
-                except:
+                    return yaml.safe_load(match.group())
+                except yaml.YAMLError:
                     pass
             return None
         
     def remove_album_art_with_ffmpeg(self, folder_path):
-        files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp3")]
+        folder = Path(folder_path)
+        files = [f for f in folder.iterdir() if f.suffix.lower() == ".mp3"]
         removed_count = 0
 
-        for filename in files:
-            file_path = os.path.join(folder_path, filename)
-            temp_file = os.path.join(folder_path, f"_tmp_{filename}")
+        for file_path in files:
+            temp_file = folder / f"_tmp_{file_path.name}"
 
             try:
                 subprocess.run([
                     "ffmpeg", "-y",
-                    "-i", file_path,              # используем конкретный mp3 файл
+                    "-i", str(file_path),
                     "-map_metadata", "0",
                     "-id3v2_version", "3",
                     "-c:a", "copy",
                     "-vn",
-                    temp_file
+                    str(temp_file)
                 ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-                os.replace(temp_file, file_path)
-                print(f"[MSG] Cover removed: {filename}")
+                temp_file.replace(file_path)
+                print(f"[MSG] Cover removed: {file_path.name}")
                 removed_count += 1
 
             except subprocess.CalledProcessError as e:
-                print(f"[ERROR] Processing error {filename}: {e.stderr.decode(errors='ignore')}")
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+                print(f"[ERROR] Processing error {file_path.name}: {e.stderr.decode(errors='ignore')}")
+                if temp_file.exists():
+                    temp_file.unlink()
 
         print(f"\n[MSG] Total files processed: {len(files)}")
         print(f"[MSG] Covers removed: {removed_count}")
@@ -164,17 +163,12 @@ class MusicProcessor:
                 audio[tag] = value
 
             if self.remove_images:
-                id3_tags = ID3(temp_path)
-                apic_keys = [key for key in id3_tags.keys() if key.startswith('APIC')]
-                for key in apic_keys:
-                    del id3_tags[key]
-                if apic_keys:
-                    id3_tags.save()
+                self.remove_album_art_with_ffmpeg(final_path)
 
             audio.save()
 
             if temp_path != final_path:
-                os.rename(temp_path, final_path)
+                Path.replace(temp_path, final_path)
 
 
             print(f"[MSG] {Path(file_path).name} -> {final_path.name}")

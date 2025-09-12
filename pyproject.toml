@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metadata-reboot"
+version = "1.1.0"
+description = "Tool for cleaning and correcting music file names and metadata with local AI"
+authors = [
+    { name = "Vladimir2090", email = "zvladzubkov@gmail.com" }
+]
+license = { text = "GPLv3" }
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "mutagen==1.47.0",
+    "llama-cpp-python>=0.2.90",
+]
+
+[project.urls]
+Homepage = "https://github.com/vladimir2090/metadata-reboot"
+
+[project.classifiers]
+ProgrammingLanguage = "Python :: 3"
+License = "OSI Approved :: GNU General Public License v3 (GPLv3)"
+OperatingSystem = "OS Independent"
+Topic1 = "Multimedia :: Sound/Audio"
+Topic2 = "Software Development :: Libraries :: Python Modules"
+
+[project.scripts]
+meta-reboot = "metadata-reboot.main:main"

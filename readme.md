@@ -34,17 +34,16 @@ Future updates will focus on additional optimizations, extended format support, 
 * **MP3 Metadata Parsing**: Reliable extraction via `mutagen`
 * **AI Integration**: Uses local Llama models for processing
 * **Batch Processing**: Edit large libraries in one go
-* **JSON Configuration**: Custom processing options, model paths, tags, and renaming formats
+* **YAML Configuration**: Custom processing options, model paths, tags, and renaming formats
 
 ---
 
 ## 📋 TODO
 
 * [x] Core: AI metadata suggestions + updated file creation
-* [x] `config.json` customization
-* [x] Add `setup.py` for installation
+* [x] `config.yaml` customization
 * [x] Optimize & compress redundant metadata
-* [ ] Add `pyproject.toml` for modern project management
+* [x] Add `pyproject.toml` for modern project management
 
 ---
 
@@ -63,7 +62,7 @@ Future updates will focus on additional optimizations, extended format support, 
 
 ### Configuration
 
-* Configurable via JSON: model paths, options, tags
+* Configurable via YAML: model paths, options, tags
 * Adjustable batch size for big libraries
 
 ### Error Handling
@@ -89,14 +88,14 @@ pip install .
 ```
 
 3.Download an AI model in GGUF format (recommended: Mistral-7B-Instruct-v0.3).
-4.Configure your `config.json` (model paths, folders, tags, renaming, AI prompts).
+4.Configure your `config.yaml` (model paths, folders, tags, renaming, AI prompts).
 5.Run in terminal:
 
 ```bash
 meta-reboot
 ```
 
-⚠️ Proper `config.json` configuration is required for successful operation!
+⚠️ Proper `config.yaml` configuration is required for successful operation!
 
 ---
 
