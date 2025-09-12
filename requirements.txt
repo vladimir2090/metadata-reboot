@@ -1,2 +1,3 @@
 mutagen==1.47.0
 llama-cpp-python>=0.2.90
+PyYAML>=6.0.0

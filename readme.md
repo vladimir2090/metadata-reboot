@@ -99,6 +99,16 @@ meta-reboot
 
 ---
 
+## Dependencies
+
+| Package                                                          | Version       | Purpose                              |
+|------------------------------------------------------------------|---------------|--------------------------------------|
+| [`mutagen`](https://pypi.org/project/mutagen/)                   | 1.47.0        | MP3/ID3 metadata reading & writing   |
+| [`llama-cpp-python`](https://pypi.org/project/llama-cpp-python/) | 0.3.16        | Local Llama AI inference             |
+| [`PyYAML`](https://pypi.org/project/PyYAML/)                     | 6.0.2         | YAML configuration parsing           |
+
+---
+
 ## 🤝 Contributing
 
 **Every contribution is important!**
