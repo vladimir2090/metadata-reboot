@@ -205,18 +205,17 @@ class MusicProcessor:
                     
                     safe_metadata = {}
                     for field in required_fields:
-                        safe_metadata[field] = metadata.get(field, "Unknown")
+                        safe_metadata[field] = metadata.get(field, "N")
                     
                     new_file_name = self.rename_format.format(**safe_metadata)
                     print("[MSG]", new_file_name)
                 except (KeyError, ValueError) as e:
                     print(f"[WARNING] Filename format error: {e}, using original name")
                     new_file_name = old_data["filename"]
-
-                if self.apply_changes(old_file, new_file_name, new_data["metadata"]):
+                applied = self.apply_changes(old_file, new_file_name, new_data["metadata"])
+                if applied:
                     processed_count += 1
-
-        print(f"[MSG] Processed: {processed_count}/{len(mp3_files)}")
+                    print(f"[MSG] Applied changes to {old_file}")
 
 def main():
     MusicProcessor().run()
