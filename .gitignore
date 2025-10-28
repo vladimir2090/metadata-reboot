@@ -1,3 +1,5 @@
 /.venv
+/.vscode
+/.zed
 test_function.py
 debug_ai_response.txt

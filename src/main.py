@@ -10,7 +10,17 @@ import atexit
 import subprocess
 
 class MusicProcessor:
-    __slots__ = ('llm', 'music_folder', 'music_recode_folder', 'tags', 'system_prompt', 'rename_format', 'chunk_size', "stopwords", "remove_images")
+    __slots__ = (
+        "llm",
+        "music_folder",
+        "music_recode_folder",
+        "tags",
+        "system_prompt",
+        "rename_format",
+        "chunk_size",
+        "stopwords",
+        "remove_images",
+    )
 
     def __init__(self, config_path: str = "config.yaml"):
         with open(config_path, "r", encoding="utf-8") as f:
@@ -40,35 +50,44 @@ class MusicProcessor:
         Path(self.music_recode_folder).mkdir(parents=True, exist_ok=True)
 
     def _cleanup_llm(self):
-        if hasattr(self, 'llm') and self.llm is not None:
+        if hasattr(self, "llm") and self.llm is not None:
             try:
                 self.llm.close()
-            except:
+            except Exception:
                 pass
 
     def clean_stopwords(self, text: str) -> str:
         if not text or text == "N":
             return text
+
         cleaned = text
         for word in self.stopwords:
             pattern = re.compile(rf"(?<!\w){re.escape(word)}(?!\w)", flags=re.IGNORECASE)
             cleaned = pattern.sub("", cleaned)
+
         cleaned = " ".join(cleaned.split())
         return cleaned if cleaned else "N"
-    
+
     def extract_metadata(self, file_path):
         try:
             audio = EasyID3(file_path)
             metadata = {
-                tag: audio[tag][0] if tag in audio and audio[tag] and audio[tag][0].strip() else 'N'
+                tag: audio[tag][0]
+                if tag in audio and audio[tag] and audio[tag][0].strip()
+                else "N"
                 for tag in self.tags
             }
 
             cleaned_metadata = {k: self.clean_stopwords(v) for k, v in metadata.items()}
             filename = Path(file_path).name
             cleaned_filename = self.clean_stopwords(filename)
-            
-            return {"filename": filename, "cleaned_filename": cleaned_filename, "metadata": cleaned_metadata}
+
+            return {
+                "filename": filename,
+                "cleaned_filename": cleaned_filename,
+                "metadata": cleaned_metadata,
+            }
+
         except Exception as e:
             print(f"[SKIP] Corrupted file {file_path}: {e}")
             return None
@@ -79,10 +98,11 @@ class MusicProcessor:
 
         files_data_yaml = yaml.dump(batch, allow_unicode=False, indent=2)
         prompt = f"{self.system_prompt}\n\n{files_data_yaml}"
+
         try:
             result = self.llm(
                 f"[INST]\n{prompt}\n[/INST]",
-                max_tokens=1024,         
+                max_tokens=1024,
                 temperature=0.8,
                 top_p=0.9,
                 top_k=50,
@@ -92,16 +112,19 @@ class MusicProcessor:
                 presence_penalty=0.0,
                 stream=False,
                 stop=[],
-                seed=0
+                seed=0,
             )
 
-            if isinstance(result, dict) and 'choices' in result:
-                ai_text = result['choices'][0]['text'].strip()
-                raw = result['choices'][0]['text']
+            if isinstance(result, dict) and "choices" in result:
+                ai_text = result["choices"][0]["text"].strip()
+                raw = result["choices"][0]["text"]
+
                 print("[MSG] FULL RESULT:", result)
                 with open("debug_ai_response.txt", "w", encoding="utf-8") as f:
                     f.write(raw)
+
                 return self.parse_ai_response(ai_text)
+
         except Exception as e:
             print(f"[ERROR] AI processing failed: {e}")
             return None
@@ -110,14 +133,14 @@ class MusicProcessor:
         try:
             return yaml.safe_load(ai_text)
         except yaml.YAMLError:
-            match = re.search(r'\[.*\]', ai_text, re.DOTALL)
+            match = re.search(r"\[.*\]", ai_text, re.DOTALL)
             if match:
                 try:
                     return yaml.safe_load(match.group())
                 except yaml.YAMLError:
                     pass
             return None
-        
+
     def remove_album_art_with_ffmpeg(self, folder_path):
         folder = Path(folder_path)
         files = [f for f in folder.iterdir() if f.suffix.lower() == ".mp3"]
@@ -127,15 +150,20 @@ class MusicProcessor:
             temp_file = folder / f"_tmp_{file_path.name}"
 
             try:
-                subprocess.run([
-                    "ffmpeg", "-y",
-                    "-i", str(file_path),
-                    "-map_metadata", "0",
-                    "-id3v2_version", "3",
-                    "-c:a", "copy",
-                    "-vn",
-                    str(temp_file)
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", str(file_path),
+                        "-map_metadata", "0",
+                        "-id3v2_version", "3",
+                        "-c:a", "copy",
+                        "-vn",
+                        str(temp_file)
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
 
                 temp_file.replace(file_path)
                 print(f"[MSG] Cover removed: {file_path.name}")
@@ -155,8 +183,8 @@ class MusicProcessor:
             shutil.copy2(file_path, temp_path)
 
             final_path = Path(self.music_recode_folder) / new_name
-
             audio = MP3(temp_path, ID3=EasyID3)
+
             for tag, value in new_metadata.items():
                 if not value or value.strip() == "":
                     value = "N"
@@ -170,9 +198,9 @@ class MusicProcessor:
             if temp_path != final_path:
                 Path.replace(temp_path, final_path)
 
-
             print(f"[MSG] {Path(file_path).name} -> {final_path.name}")
             return True
+
         except Exception as e:
             print(f"[ERROR] Failed to apply changes for {file_path}: {e}")
             return False
@@ -191,34 +219,41 @@ class MusicProcessor:
 
         processed_count = 0
         for i in range(0, len(metadata_list), self.chunk_size):
-            batch = metadata_list[i:i + self.chunk_size]
+            batch = metadata_list[i : i + self.chunk_size]
             ai_output = self.process_batch(batch)
+
             print("[MSG]", ai_output)
             if not ai_output:
                 continue
 
             for old_data, new_data in zip(batch, ai_output):
                 old_file = Path(self.music_folder) / old_data["filename"]
+
                 try:
                     metadata = new_data.get("metadata", {})
                     required_fields = ["artist", "title", "album"]
-                    
+
                     safe_metadata = {}
                     for field in required_fields:
                         safe_metadata[field] = metadata.get(field, "N")
-                    
+
                     new_file_name = self.rename_format.format(**safe_metadata)
                     print("[MSG]", new_file_name)
+
                 except (KeyError, ValueError) as e:
                     print(f"[WARNING] Filename format error: {e}, using original name")
                     new_file_name = old_data["filename"]
+
                 applied = self.apply_changes(old_file, new_file_name, new_data["metadata"])
+
                 if applied:
                     processed_count += 1
                     print(f"[MSG] Applied changes to {old_file}")
 
+
 def main():
     MusicProcessor().run()
+
 
 if __name__ == "__main__":
     main()
