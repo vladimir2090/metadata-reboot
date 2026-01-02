@@ -1,4 +1,5 @@
 /.venv
+/llama-cpp-python
 /.vscode
 /.zed
 test_function.py

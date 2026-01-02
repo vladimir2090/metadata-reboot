@@ -19,6 +19,7 @@ class MusicProcessor:
         "rename_format",
         "chunk_size",
         "stopwords",
+        "required_fields",        
         "remove_images",
     )
 
@@ -33,6 +34,7 @@ class MusicProcessor:
         self.rename_format = config["rename_format"]
         self.chunk_size = config["chunk_size"]
         self.stopwords = tuple(config["stopwords"])
+        self.required_fields = tuple(config["required_fields"])
         self.remove_images = config["remove_images"]
 
         try:
@@ -66,6 +68,7 @@ class MusicProcessor:
             cleaned = pattern.sub("", cleaned)
 
         cleaned = " ".join(cleaned.split())
+
         return cleaned if cleaned else "N"
 
     def extract_metadata(self, file_path):
@@ -114,7 +117,6 @@ class MusicProcessor:
                 stop=[],
                 seed=0,
             )
-
             if isinstance(result, dict) and "choices" in result:
                 ai_text = result["choices"][0]["text"].strip()
                 raw = result["choices"][0]["text"]
@@ -130,52 +132,55 @@ class MusicProcessor:
             return None
 
     def parse_ai_response(self, ai_text: str):
-        try:
-            return yaml.safe_load(ai_text)
-        except yaml.YAMLError:
-            match = re.search(r"\[.*\]", ai_text, re.DOTALL)
-            if match:
-                try:
-                    return yaml.safe_load(match.group())
-                except yaml.YAMLError:
-                    pass
+        if not ai_text:
+            print(f"[ERROR] AI error does nothing") 
+            return None
+            
+        match = re.search(r"\[.*\]", ai_text, re.DOTALL)
+        
+        if match:
+            try:
+                return yaml.safe_load(match.group())
+            except (yaml.YAMLError, AttributeError) as e:
+                print(f"[ERROR] Parsing failed: {e}")
+                return None
+        else:
+            print(f"[ERROR] No list [...] found in response")
             return None
 
-    def remove_album_art_with_ffmpeg(self, folder_path):
-        folder = Path(folder_path)
-        files = [f for f in folder.iterdir() if f.suffix.lower() == ".mp3"]
-        removed_count = 0
+    def remove_album_art_with_ffmpeg(self, file_path):
+        file_path = Path(file_path)
+        temp_file = file_path.with_name(f"{file_path.stem}_noart{file_path.suffix}")
 
-        for file_path in files:
-            temp_file = folder / f"_tmp_{file_path.name}"
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", str(file_path),
+                    "-map_metadata", "0",
+                    "-id3v2_version", "3",
+                    "-c:a", "copy",
+                    "-vn",
+                    str(temp_file)
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            
+            if file_path.exists():
+                file_path.unlink()
+            temp_file.rename(file_path)
+            
+            print(f"[MSG] Cover removed: {file_path.name}")
+            return True
 
-            try:
-                subprocess.run(
-                    [
-                        "ffmpeg", "-y",
-                        "-i", str(file_path),
-                        "-map_metadata", "0",
-                        "-id3v2_version", "3",
-                        "-c:a", "copy",
-                        "-vn",
-                        str(temp_file)
-                    ],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] FFmpeg error for {file_path.name}: {e.stderr.decode(errors='ignore')}")
+            if temp_file.exists():
+                temp_file.unlink()
+            return False
 
-                temp_file.replace(file_path)
-                print(f"[MSG] Cover removed: {file_path.name}")
-                removed_count += 1
-
-            except subprocess.CalledProcessError as e:
-                print(f"[ERROR] Processing error {file_path.name}: {e.stderr.decode(errors='ignore')}")
-                if temp_file.exists():
-                    temp_file.unlink()
-
-        print(f"\n[MSG] Total files processed: {len(files)}")
-        print(f"[MSG] Covers removed: {removed_count}")
 
     def apply_changes(self, file_path, new_name, new_metadata):
         try:
@@ -183,26 +188,35 @@ class MusicProcessor:
             shutil.copy2(file_path, temp_path)
 
             final_path = Path(self.music_recode_folder) / new_name
-            audio = MP3(temp_path, ID3=EasyID3)
+
+            try:
+                audio = MP3(temp_path, ID3=EasyID3)
+            except Exception:
+                audio = MP3(temp_path)
+                audio.add_tags()
 
             for tag, value in new_metadata.items():
-                if not value or value.strip() == "":
-                    value = "N"
-                audio[tag] = value
-
-            if self.remove_images:
-                self.remove_album_art_with_ffmpeg(final_path)
+                val_str = str(value).strip() if value else "N"
+                if not val_str: val_str = "N"
+                audio[tag] = val_str
 
             audio.save()
 
+            if self.remove_images:
+                self.remove_album_art_with_ffmpeg(temp_path)
+
             if temp_path != final_path:
-                Path.replace(temp_path, final_path)
+                if final_path.exists():
+                    final_path.unlink()
+                temp_path.rename(final_path)
 
             print(f"[MSG] {Path(file_path).name} -> {final_path.name}")
             return True
 
         except Exception as e:
             print(f"[ERROR] Failed to apply changes for {file_path}: {e}")
+            if 'temp_path' in locals() and temp_path.exists():
+                temp_path.unlink()
             return False
 
     def run(self):
@@ -231,10 +245,9 @@ class MusicProcessor:
 
                 try:
                     metadata = new_data.get("metadata", {})
-                    required_fields = ["artist", "title", "album"]
 
                     safe_metadata = {}
-                    for field in required_fields:
+                    for field in self.required_fields:
                         safe_metadata[field] = metadata.get(field, "N")
 
                     new_file_name = self.rename_format.format(**safe_metadata)
@@ -250,10 +263,8 @@ class MusicProcessor:
                     processed_count += 1
                     print(f"[MSG] Applied changes to {old_file}")
 
-
 def main():
     MusicProcessor().run()
-
 
 if __name__ == "__main__":
     main()

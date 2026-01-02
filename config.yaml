@@ -1,9 +1,16 @@
-music_folder: "C:/Users/admin/Desktop/music_for_disk"
-music_recode_folder: "C:/Users/admin/Desktop/music_for_disk_test"
+music_folder: "C:/Users/admin/Desktop/unsorted_music"
+music_recode_folder: "C:/Users/admin/Desktop/sorted_music"
 model_path: "C:/Users/admin/Desktop/ai/Mistral-7B-Instruct-v0.3.Q5_K_M.gguf"
-
-system_prompt: "You are a JSON formatter for music metadata. Input: track metadata with possible errors. Task: Standardize metadata fields and filenames. If 'album' is N or invalide, copy 'title' into it. if 'albumartist' is N or invalid, copy 'artist'.  it Output: only valid JSON, no explanations"
+system_prompt: "You are a JSON formatter for music metadata. Input: track metadata with possible errors. Task: Standardize metadata fields and filenames. RULES:1. If 'album' is missing or invalid, copy 'title' into it.2. If 'albumartist' is missing, copy 'artist'. Output: only valid JSON, no explanations."
 rename_format: "{artist} - {title} [{album}].mp3"
+required_fields:
+  - album
+  - albumartist
+  - artist
+  - date
+  - genre
+  - title
+  - tracknumber
 remove_images: true
 
 chunk_size: 5
